@@ -83,7 +83,10 @@ func main() {
 
 		// Compute the needed quorum percentage
 		q, prob := FindQ(p, float64(start)/100, epsilon)
-		fmt.Printf("\n\nQuorum percentage %d%%: p(safety) = %e", q, prob)
+		// Compute the liveness probability
+		p.quorum = float64(q) / 100
+		pl := GetLivenessProbability(p)
+		fmt.Printf("\n\nQuorum percentage %d%%: p(safety) = %e, p(liveness)= %e\n", q, prob, pl)
 	case 3:
 		// Ask user to input the failure probability
 		fmt.Println("Enter the failure probability")
@@ -108,7 +111,10 @@ func main() {
 
 		// Compute the needed endorser set size
 		e, prob := FindE(p, start, step, epsilon)
-		fmt.Printf("\n\nEndorser set size %d: p(safety) = %e", e, prob)
+		// Compute the liveness probability
+		p.endorsers = e
+		pl := GetLivenessProbability(p)
+		fmt.Printf("\n\nEndorser set size %d: p(safety) = %e, p(liveness)= %e\n", e, prob, pl)
 	default:
 		fmt.Println("Invalid choice")
 	}
