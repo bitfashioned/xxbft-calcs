@@ -34,6 +34,7 @@ func main() {
 	fmt.Println("  1 -> Failure probabilities for multiple quorums for a given endorser set size")
 	fmt.Println("  2 -> Needed quorum to achieve a given failure probability for a given endorser set size")
 	fmt.Println("  3 -> Needed endorser set size to achieve a given failure probability for a given quorum")
+	fmt.Println("  4 -> Failure probabilities for multiple quorums for a given endorser set size with biasable randomness")
 	var choice int
 	fmt.Scanf("%d", &choice)
 
@@ -115,6 +116,41 @@ func main() {
 		p.endorsers = e
 		pl := GetLivenessProbability(p)
 		fmt.Printf("\n\nEndorser set size %d: p(safety) = %e, p(liveness)= %e\n", e, prob, pl)
+	case 4:
+		// Ask user to input the endorser set size
+		fmt.Println("Enter the endorser set size")
+		fmt.Scanf("%d", &p.endorsers)
+
+		// Ask user to input the lowest quorum percentage
+		fmt.Println("Enter the lowest quorum percentage")
+		var low int
+		fmt.Scanf("%d", &low)
+
+		// Ask user to input the highest quorum percentage
+		fmt.Println("Enter the highest quorum percentage")
+		var high int
+		fmt.Scanf("%d", &high)
+
+		// Ask user to input he number of biasable bits of randomness
+		fmt.Println("Enter the number of biasable bits of randomness")
+		var bits int
+		fmt.Scanf("%d", &bits)
+
+		// Compute the failure probability for each quorum percentage
+		results := make([]result, high-low+1)
+		for q := low; q <= high; q++ {
+			p.quorum = float64(q) / 100
+			ps := GetFailureProbability(p)
+			ps = 1 - math.Pow(1-ps, math.Pow(2, float64(bits)))
+			pl := GetLivenessProbability(p)
+			pl = 1 - math.Pow(1-pl, math.Pow(2, float64(bits)))
+			results[q-low] = result{T: q, F: ps, L: pl}
+		}
+		fmt.Println()
+		fmt.Println()
+		for _, val := range results {
+			fmt.Printf("Quorum percentage %d%%: p(safety) = %e, p(liveness)= %e\n", val.T, val.F, val.L)
+		}
 	default:
 		fmt.Println("Invalid choice")
 	}
