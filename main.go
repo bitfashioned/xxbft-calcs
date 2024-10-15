@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
 type result struct {
@@ -11,48 +13,110 @@ type result struct {
 	L float64
 }
 
-func main() {
-	// Ask user to input the parameters
-	var p params
-	fmt.Println("Enter the network size")
-	fmt.Scanf("%d", &p.network)
+// Helper function to format numbers with 'k' or 'm'
+func formatNumber(value float64) string {
+	value = math.Round(value*10000) / 10000 // Round to 4 decimal places
+	if value >= 1000000000000 {
+		if value/1000000000000 < 10 {
+			return fmt.Sprintf("%4.0fT", value/1000000000000) // Pad with zeros
+		} else {
+			return "> 10T"
+		}
+	} else if value >= 1000000000 {
+		return fmt.Sprintf("%4.0fB", value/1000000000) // Pad with zeros
+	} else if value >= 1000000 {
+		return fmt.Sprintf("%4.0fM", value/1000000) // Pad with zeros
+	} else if value >= 1000 {
+		return fmt.Sprintf("%4.0fK", value/1000) // Pad with zeros
+	} else if value < 1 {
+		return "< 01"
+	}
+	return fmt.Sprintf("%4.0f", value) // Pad with zeros
+}
 
-	fmt.Println("Enter the percentage of honest nodes")
-	var h int
-	fmt.Scanf("%d", &h)
-	// Compute the number of honest nodes
+// Helper function to read input with a default value using Scanf and return an integer or float64
+func readInput(prompt string, defaultValue string) interface{} {
+	fmt.Printf("%s (default: %s): ", prompt, defaultValue)
+	var input string
+	_, err := fmt.Scanf("%s\n", &input)
+	if err != nil || input == "" {
+		input = defaultValue
+	}
+	// Check if input contains "e" (scientific notation)
+	if strings.Contains(input, "e") {
+		value, _ := strconv.ParseFloat(input, 64)
+		return value
+	}
+	value, _ := strconv.Atoi(input)
+	return value
+}
+
+func readInputFloat(prompt string, defaultValue string) float64 {
+	return readInput(prompt, defaultValue).(float64)
+}
+
+func readInputInt(prompt string, defaultValue string) int {
+	return readInput(prompt, defaultValue).(int)
+}
+
+func main() {
+	var p params
+
+	// Default values
+	defaultNetwork := "1000"
+	defaultHonest := "67"
+	defaultBlockTime := "1"
+	defaultChoice := "1"
+	defaultEndorsers := "150"
+	defaultQuorum := "80"
+	defaultLowQuorum := "50"
+	defaultHighQuorum := "80"
+	defaultEpsilon := "1e-14"
+	defaultLowEndorsers := "100"
+	defaultStepSizeEndorsers := "10"
+	defaultBits := "1"
+
+	// Ask user to input the parameters with default values
+	p.network = readInputInt("Enter the network size", defaultNetwork)
+	h := readInputInt("Enter the percentage of honest nodes", defaultHonest)
 	p.honest = int(math.Ceil(float64(p.network) * float64(h) / 100))
 	// Compute the number of faulty nodes
 	p.faulty = p.network - p.honest
 
-	fmt.Printf("Nodes: %d\n", p.network)
-	fmt.Printf("GOOD: %d\n", p.honest)
-	fmt.Printf("BAD: %d\n\n", p.faulty)
+	// global var with number of seconds in a year
+	secondsInYear := float64(31536000)
+	// global var with number of seconds in a day
+	secondsInDay := float64(86400)
+
+	// Enter estimated block time
+	t := readInputInt("Enter the estimated block time in seconds", defaultBlockTime)
 
 	// Choose the caclulation to perform
-	fmt.Println("Select the calculation to perform")
+	fmt.Println("Possible types of calculations:")
 	fmt.Println("  1 -> Failure probabilities for multiple quorums for a given endorser set size")
 	fmt.Println("  2 -> Needed quorum to achieve a given failure probability for a given endorser set size")
 	fmt.Println("  3 -> Needed endorser set size to achieve a given failure probability for a given quorum")
 	fmt.Println("  4 -> Failure probabilities for multiple quorums for a given endorser set size with biasable randomness")
-	var choice int
-	fmt.Scanf("%d", &choice)
+	fmt.Println()
+	choice := readInputInt("Select the calculation to perform from the above list", defaultChoice)
+	fmt.Println()
+
+	fmt.Println("Chosen parameters:")
+	fmt.Printf("=> Total Nodes: %d\n", p.network)
+	fmt.Printf("=> # Good Nodes: %d\n", p.honest)
+	fmt.Printf("=> # Bad Nodes: %d\n", p.faulty)
+	fmt.Printf("=> Block time: %d seconds\n", t)
+	fmt.Printf("=> Calculation Type: %d\n", choice)
+	fmt.Println()
 
 	switch choice {
 	case 1:
 		// Ask user to input the endorser set size
-		fmt.Println("Enter the endorser set size")
-		fmt.Scanf("%d", &p.endorsers)
-
+		p.endorsers = readInputInt("Enter the endorser set size", defaultEndorsers)
 		// Ask user to input the lowest quorum percentage
-		fmt.Println("Enter the lowest quorum percentage")
-		var low int
-		fmt.Scanf("%d", &low)
-
+		low := readInputInt("Enter the lowest quorum percentage", defaultLowQuorum)
 		// Ask user to input the highest quorum percentage
-		fmt.Println("Enter the highest quorum percentage")
-		var high int
-		fmt.Scanf("%d", &high)
+		high := readInputInt("Enter the highest quorum percentage", defaultHighQuorum)
 
 		// Compute the failure probability for each quorum percentage
 		results := make([]result, high-low+1)
@@ -62,79 +126,104 @@ func main() {
 			pl := GetLivenessProbability(p)
 			results[q-low] = result{T: q, F: ps, L: pl}
 		}
+
+		// Print the calculation specific parameters
 		fmt.Println()
+		fmt.Println("Calculation specific parameters:")
+		fmt.Printf("=> Quorum percentage: %d%% - %d%%\n", low, high)
+		fmt.Printf("=> Endorser set size: %d\n", p.endorsers)
 		fmt.Println()
+
 		for _, val := range results {
-			fmt.Printf("Quorum percentage %d%%: p(safety) = %e, p(liveness)= %e\n", val.T, val.F, val.L)
+			// Calculate the values
+			safetyYears := float64(t) / (secondsInYear * val.F)
+			livenessDays := float64(t) / (secondsInDay * val.L)
+
+			// Use the helper function to format the values
+			safetyYearsStr := formatNumber(safetyYears)
+			livenessDaysStr := formatNumber(livenessDays)
+
+			// Print the formatted values with percentages
+			fmt.Printf("Quorum percentage %d%%: p(safety) = %e (%3.0f%%) (%s years),\t p(liveness)= %e (%3.0f%%) (%s days),\t finality = %.2f seconds\n", val.T, val.F, val.F*100, safetyYearsStr, val.L, val.L*100, livenessDaysStr, float64(t))
 		}
 	case 2:
 		// Ask user to input the endorser set size
-		fmt.Println("Enter the endorser set size")
-		fmt.Scanf("%d", &p.endorsers)
-
+		p.endorsers = readInputInt("Enter the endorser set size", defaultEndorsers)
 		// Ask user to input the failure probability
-		fmt.Println("Enter the failure probability")
-		var epsilon float64
-		fmt.Scanf("%e", &epsilon)
-
+		epsilon := readInputFloat("Enter the failure probability", defaultEpsilon)
 		// Ask user to input the lowest quorum percentage
-		fmt.Println("Enter the lowest quorum percentage")
-		var start int
-		fmt.Scanf("%d", &start)
+		start := readInputInt("Enter the lowest quorum percentage", defaultLowQuorum)
+
+		// Print the calculation specific parameters
+		fmt.Println()
+		fmt.Println("Calculation specific parameters:")
+		fmt.Printf("=> Endorser set size: %d\n", p.endorsers)
+		fmt.Printf("=> Failure probability: %e\n", epsilon)
+		fmt.Printf("=> Low Quorum percentage: %d%%\n", start)
+		fmt.Println()
 
 		// Compute the needed quorum percentage
 		q, prob := FindQ(p, float64(start)/100, epsilon)
 		// Compute the liveness probability
 		p.quorum = float64(q) / 100
 		pl := GetLivenessProbability(p)
-		fmt.Printf("\n\nQuorum percentage %d%%: p(safety) = %e, p(liveness)= %e\n", q, prob, pl)
+		safetyYears := float64(t) / (secondsInYear * prob)
+		livenessDays := float64(t) / (secondsInDay * pl)
+		safetyYearsStr := formatNumber(safetyYears)
+		livenessDaysStr := formatNumber(livenessDays)
+		fmt.Printf("\n\nQuorum percentage %d%%: p(safety) = %e (%3.0f%%) (%s years), p(liveness)= %e (%3.0f%%) (%s days)\n", q, prob, prob*100, safetyYearsStr, pl, pl*100, livenessDaysStr)
 	case 3:
 		// Ask user to input the failure probability
-		fmt.Println("Enter the failure probability")
-		var epsilon float64
-		fmt.Scanf("%e", &epsilon)
-
+		epsilon := readInputFloat("Enter the failure probability", defaultEpsilon)
 		// Ask user to input the quorum percentage
-		fmt.Println("Enter the quorum percentage")
-		var q int
-		fmt.Scanf("%d", &q)
+		q := readInputInt("Enter the quorum percentage", defaultQuorum)
 		p.quorum = float64(q) / 100
 
 		// Ask user to input the lowest endorser set size
-		fmt.Println("Enter the lowest endorser set size")
-		var start int
-		fmt.Scanf("%d", &start)
+		start := readInputInt("Enter the lowest endorser set size", defaultLowEndorsers)
 
 		// Ask user to input the endorser set size step increment
-		fmt.Println("Enter the endorser set size step increment")
-		var step int
-		fmt.Scanf("%d", &step)
+		step := readInputInt("Enter the endorser set size step increment", defaultStepSizeEndorsers)
+
+		// Print the calculation specific parameters
+		fmt.Println()
+		fmt.Println("Calculation specific parameters:")
+		fmt.Printf("=> Failure probability: %e\n", epsilon)
+		fmt.Printf("=> Quorum percentage: %d%%\n", q)
+		fmt.Printf("=> Lowest Endorser set size: %d\n", start)
+		fmt.Printf("=> Endorser set size step increment: %d\n\n", step)
+		fmt.Println()
 
 		// Compute the needed endorser set size
-		e, prob := FindE(p, start, step, epsilon)
+		e, prob := FindE(p, start, step, float64(epsilon))
 		// Compute the liveness probability
 		p.endorsers = e
 		pl := GetLivenessProbability(p)
-		fmt.Printf("\n\nEndorser set size %d: p(safety) = %e, p(liveness)= %e\n", e, prob, pl)
+		safetyYears := float64(t) / (secondsInYear * prob)
+		livenessDays := float64(t) / (secondsInDay * pl)
+		safetyYearsStr := formatNumber(safetyYears)
+		livenessDaysStr := formatNumber(livenessDays)
+		fmt.Printf("\n\nEndorser set size %d: p(safety) = %e (%3.0f%%) (%s years), p(liveness)= %e (%3.0f%%) (%s days)\n", e, prob, prob*100, safetyYearsStr, pl, pl*100, livenessDaysStr)
 	case 4:
 		// Ask user to input the endorser set size
-		fmt.Println("Enter the endorser set size")
-		fmt.Scanf("%d", &p.endorsers)
+		p.endorsers = readInputInt("Enter the endorser set size", defaultEndorsers)
 
 		// Ask user to input the lowest quorum percentage
-		fmt.Println("Enter the lowest quorum percentage")
-		var low int
-		fmt.Scanf("%d", &low)
+		low := readInputInt("Enter the lowest quorum percentage", defaultLowQuorum)
 
 		// Ask user to input the highest quorum percentage
-		fmt.Println("Enter the highest quorum percentage")
-		var high int
-		fmt.Scanf("%d", &high)
+		high := readInputInt("Enter the highest quorum percentage", defaultHighQuorum)
 
 		// Ask user to input he number of biasable bits of randomness
-		fmt.Println("Enter the number of biasable bits of randomness")
-		var bits int
-		fmt.Scanf("%d", &bits)
+		bits := readInputInt("Enter the number of biasable bits of randomness", defaultBits)
+
+		// Print the calculation specific parameters
+		fmt.Println()
+		fmt.Println("Calculation specific parameters:")
+		fmt.Printf("=> Endorser set size: %d\n", p.endorsers)
+		fmt.Printf("=> Quorum percentage: %d%% - %d%%\n", low, high)
+		fmt.Printf("=> Number of biasable bits of randomness: %d\n\n", bits)
+		fmt.Println()
 
 		// Compute the failure probability for each quorum percentage
 		results := make([]result, high-low+1)
@@ -146,10 +235,13 @@ func main() {
 			pl = 1 - math.Pow(1-pl, math.Pow(2, float64(bits)))
 			results[q-low] = result{T: q, F: ps, L: pl}
 		}
-		fmt.Println()
-		fmt.Println()
+
 		for _, val := range results {
-			fmt.Printf("Quorum percentage %d%%: p(safety) = %e, p(liveness)= %e\n", val.T, val.F, val.L)
+			safetyYears := float64(t) / (secondsInYear * val.F)
+			livenessDays := float64(t) / (secondsInDay * val.L)
+			safetyYearsStr := formatNumber(safetyYears)
+			livenessDaysStr := formatNumber(livenessDays)
+			fmt.Printf("Quorum percentage %d%%: p(safety) = %e (%3.0f%%) (%s years), p(liveness)= %e (%3.0f%%) (%s days)\n", val.T, val.F, val.F*100, safetyYearsStr, val.L, val.L*100, livenessDaysStr)
 		}
 	default:
 		fmt.Println("Invalid choice")
